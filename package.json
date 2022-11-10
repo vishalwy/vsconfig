@@ -3,6 +3,10 @@
   "displayName": "VSConfig",
   "description": "Configure your .vscode folder",
   "version": "0.0.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vishalwy/vsconfig.git"
+  },
   "engines": {
     "vscode": "^1.73.0"
   },
@@ -10,7 +14,6 @@
     "Other"
   ],
   "activationEvents": [
-    "*",
     "onCommand:vsconfig.configure",
     "onCommand:vsconfig.shellOutput"
   ],
@@ -48,7 +51,8 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "node ./out/test/runTest.js",
-    "format": "prettier --print-width 120 --trailing-comma none --single-quote --write ."
+    "format": "prettier --print-width 120 --trailing-comma none --single-quote --write .",
+    "package": "vsce package"
   },
   "devDependencies": {
     "@types/glob": "^8.0.0",
@@ -64,7 +68,8 @@
     "glob": "^8.0.3",
     "mocha": "^10.0.0",
     "prettier": "^2.7.1",
-    "typescript": "^4.8.4"
+    "typescript": "^4.8.4",
+    "vsce": "^2.14.0"
   },
   "dependencies": {
     "deepmerge": "^4.2.2",
