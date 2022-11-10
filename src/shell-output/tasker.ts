@@ -1,9 +1,15 @@
 import * as vscode from 'vscode';
 import { Deferred } from '../common/deferred';
+import { CancelError } from '../common/errors';
 import { ShellCommandTaskProvider } from '../shell-command';
 
 export class Tasker {
-  constructor(private taskName: string) {}
+  private splitRegex?: RegExp;
+  constructor(private taskName: string, splitRegex?: string) {
+    if (splitRegex) {
+      this.splitRegex = new RegExp(splitRegex);
+    }
+  }
 
   async execute(): Promise<string> {
     const deferredOutput = new Deferred<string>();
@@ -15,7 +21,8 @@ export class Tasker {
       clear: true
     };
     vscode.tasks.executeTask(task);
-    return await deferredOutput.promise;
+    let output = await deferredOutput.promise;
+    return await this.pick(output);
   }
 
   private async getTask(): Promise<vscode.Task> {
@@ -30,5 +37,25 @@ export class Tasker {
     }
 
     throw new Error(`${this.taskName} - Task not found`);
+  }
+
+  async pick(output: string): Promise<string> {
+    if (!this.splitRegex) {
+      return output;
+    }
+
+    const items = output.split(this.splitRegex).filter((item) => item);
+
+    if (items.length <= 1) {
+      return items.length ? items[0] : output;
+    }
+
+    const selectedItem = await vscode.window.showQuickPick(items);
+
+    if (selectedItem) {
+      return selectedItem;
+    }
+
+    throw new CancelError();
   }
 }
