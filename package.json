@@ -1,0 +1,75 @@
+{
+  "name": "vsconfig",
+  "displayName": "VSConfig",
+  "description": "Configure your .vscode folder",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.73.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "*",
+    "onCommand:vsconfig.configure",
+    "onCommand:vsconfig.shellOutput"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "vsconfig.configure",
+        "title": "Configure .vscode"
+      }
+    ],
+    "taskDefinitions": [
+      {
+        "type": "shell-command",
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "Shell command to execute"
+          },
+          "timeout": {
+            "type": "integer",
+            "description": "Timeout for the command execution"
+          }
+        },
+        "required": [
+          "command"
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js",
+    "format": "prettier --print-width 120 --trailing-comma none --single-quote --write ."
+  },
+  "devDependencies": {
+    "@types/glob": "^8.0.0",
+    "@types/mocha": "^10.0.0",
+    "@types/mustache": "^4.2.1",
+    "@types/node": "16.x",
+    "@types/uuid": "^8.3.4",
+    "@types/vscode": "^1.73.0",
+    "@typescript-eslint/eslint-plugin": "^5.38.1",
+    "@typescript-eslint/parser": "^5.38.1",
+    "@vscode/test-electron": "^2.1.5",
+    "eslint": "^8.24.0",
+    "glob": "^8.0.3",
+    "mocha": "^10.0.0",
+    "prettier": "^2.7.1",
+    "typescript": "^4.8.4"
+  },
+  "dependencies": {
+    "deepmerge": "^4.2.2",
+    "jsonschema": "^1.4.1",
+    "mustache": "^4.2.0",
+    "uuid": "^9.0.0"
+  }
+}

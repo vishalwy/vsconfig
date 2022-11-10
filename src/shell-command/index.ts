@@ -1,0 +1,1 @@
+export { ShellCommandTaskProvider } from './provider';
