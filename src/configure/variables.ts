@@ -36,7 +36,7 @@ export class Variables {
     input = this.replaceUUID(input);
     input = this.replaceNUMBER(input);
 
-    if (!Object.keys(this.variables)) {
+    if (!Object.keys(this.variables).length) {
       return input;
     }
 

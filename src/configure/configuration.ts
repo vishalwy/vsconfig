@@ -7,6 +7,11 @@ import { getTemplates, getVSCodeDir, getLaunchFile, getTasksFile, ITemplate } fr
 import { Variables, IConfigVariables } from './variables';
 import { VariableSchema } from './variable-schema';
 
+enum WriteStrategy {
+  Merge,
+  Replace
+}
+
 export class Configuration {
   async execute(): Promise<void> {
     const workspaceDir = await this.getWorkspaceDir();
@@ -23,14 +28,28 @@ export class Configuration {
     const vscodeDir = getVSCodeDir(workspaceDir);
     const destTemplates = await getTemplates([vscodeDir]);
 
-    if (destTemplates.length) {
-      const destConfig = await this.interpolate(destTemplates, new Variables());
+    if (destTemplates.length && (await this.getWriteStrategy()) == WriteStrategy.Merge) {
+      const destConfig = await this.interpolate(destTemplates);
       config.launchConfigs.push(...destConfig.launchConfigs);
       config.tasksConfigs.push(...destConfig.tasksConfigs);
     }
 
     await this.write(vscodeDir, deepmerge.all(config.launchConfigs), deepmerge.all(config.tasksConfigs));
     vscode.window.showInformationMessage(`Configured ${workspaceDir}`);
+  }
+
+  private async getWriteStrategy(): Promise<WriteStrategy> {
+    const selection = await vscode.window.showQuickPick(['Merge', 'Replace'], {
+      canPickMany: false,
+      ignoreFocusOut: true,
+      placeHolder: 'Target .vscode already has config files. How do you want to write?'
+    });
+
+    if (!selection) {
+      throw new CancelError();
+    }
+
+    return selection == 'Merge' ? WriteStrategy.Merge : WriteStrategy.Replace;
   }
 
   private async getWorkspaceDir(): Promise<string> {
@@ -100,16 +119,18 @@ export class Configuration {
 
   private async interpolate(
     templates: ITemplate[],
-    variables: Variables
+    variables?: Variables
   ): Promise<{ launchConfigs: object[]; tasksConfigs: object[] }> {
     const launchConfigs = [];
     const tasksConfigs = [];
 
     for (let { launchFile, tasksFile } of templates) {
-      launchConfigs.push(JSON.parse(variables.eval(await launchFile.getData())));
+      const data = await launchFile.getData();
+      launchConfigs.push(JSON.parse(variables?.eval(data) || data));
 
       if (tasksFile) {
-        tasksConfigs.push(JSON.parse(variables.eval(await tasksFile.getData())));
+        const data = await tasksFile.getData();
+        tasksConfigs.push(JSON.parse(variables?.eval(data) || data));
       }
     }
 
