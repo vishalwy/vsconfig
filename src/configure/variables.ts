@@ -1,15 +1,17 @@
+import * as crypto from 'crypto';
 import * as mustache from 'mustache';
 import * as vscode from 'vscode';
-import { v4 as uuid } from 'uuid';
 import { CancelError } from '../common/errors';
+import { Validator } from 'jsonschema';
+import { VariableSchema } from './variable-schema';
 
-const UUID_REGEX = /{{\s*(UUID\([^\)]+\))\s*}}/g;
+const HASH_REGEX = /{{\s*(HASH\([^\)]+\))\s*}}/g;
 const NUMBER_REGEX = /"{{\s*NUMBER\(([^\)]+)\)\s*}}"/g;
 
 export interface IConfigVariableDetails {
   description?: string;
   values?: string[];
-  required?: boolean;
+  optional?: boolean;
 }
 
 export interface IConfigVariables {
@@ -17,74 +19,93 @@ export interface IConfigVariables {
 }
 
 export class Variables {
-  private variables: { [variableName: string]: string } = {};
-  private uuids: { [variableName: string]: string } = {};
+  private static values: { [variableName: string]: string } = {};
+  private static hashes: { [variableName: string]: string } = {};
 
-  async load(config: IConfigVariables): Promise<void> {
-    for (let [variable, details] of Object.entries(config)) {
-      let value = await this.readVariable(variable, details);
+  constructor(private config: IConfigVariables = {}) {
+    const validation = new Validator().validate(config, VariableSchema);
 
-      if (typeof value == 'undefined') {
-        throw new CancelError();
-      }
-
-      this.variables[variable] = value;
+    if (validation.errors.length) {
+      throw new Error(`${validation.errors[0].property} - ${validation.errors[0].message}`);
     }
   }
 
-  eval(input: string): string {
-    input = this.replaceUUID(input);
-    input = this.replaceNUMBER(input);
+  async eval(input: string): Promise<string> {
+    input = this.replaceHashes(input);
+    input = this.replaceNumbers(input);
+    return await this.replaceVariables(input);
+  }
 
-    if (!Object.keys(this.variables).length) {
+  static clear(): void {
+    this.values = {};
+    this.hashes = {};
+  }
+
+  private async replaceVariables(input: string): Promise<string> {
+    const values: { [variableName: string]: string } = {};
+
+    for (let [variable, details] of Object.entries(this.config)) {
+      let value = Variables.values[variable] || (await this.readVariable(variable, details));
+      Variables.values[variable] = values[variable] = value;
+    }
+
+    if (!Object.keys(values).length) {
       return input;
     }
 
-    return mustache.render(input, this.variables, undefined, {
+    return mustache.render(input, values, undefined, {
       escape: (text: string) => JSON.stringify(text).replace(/(^")|("$)/g, '')
     });
   }
 
-  private replaceUUID(input: string): string {
-    return input.replace(UUID_REGEX, (_, p1: string) => {
-      let id = this.uuids[p1];
+  private replaceHashes(input: string): string {
+    return input.replace(HASH_REGEX, (_, p1: string) => {
+      let id = Variables.hashes[p1];
 
       if (!id) {
-        this.uuids[p1] = id = uuid();
+        id = crypto.createHash('sha256').update(input).digest('hex').slice(0, 16);
+        Variables.hashes[p1] = id;
       }
 
       return id;
     });
   }
 
-  private replaceNUMBER(input: string): string {
+  private replaceNumbers(input: string): string {
     return input.replace(NUMBER_REGEX, (_, p1: string) => {
       return `{{${p1}}}`;
     });
   }
 
-  private readVariable(variable: string, details: IConfigVariableDetails): Thenable<string | undefined> {
-    const { description = variable, values = [], required = true } = details;
+  private async readVariable(variable: string, details: IConfigVariableDetails): Promise<string> {
+    const { description = variable, values = [], optional = false } = details;
+    let value = undefined;
 
     if (values.length > 1) {
-      return vscode.window.showQuickPick(values, {
+      value = await vscode.window.showQuickPick(values, {
         placeHolder: description,
         ignoreFocusOut: true,
         canPickMany: false
       });
+    } else {
+      value = await vscode.window.showInputBox({
+        prompt: description,
+        ignoreFocusOut: true,
+        value: values.length ? values[0] : '',
+        validateInput: (value) => {
+          if (!optional && (!value || !value.trim())) {
+            return 'Value cannot be empty or contain only whitespaces';
+          }
+
+          return '';
+        }
+      });
     }
 
-    return vscode.window.showInputBox({
-      prompt: description,
-      ignoreFocusOut: true,
-      value: values.length ? values[0] : '',
-      validateInput: (value) => {
-        if (required && (!value || !value.trim())) {
-          return 'Value cannot be empty or contain only whitespaces';
-        }
+    if (value == undefined) {
+      throw new CancelError();
+    }
 
-        return '';
-      }
-    });
+    return value;
   }
 }

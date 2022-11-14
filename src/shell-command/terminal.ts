@@ -44,7 +44,7 @@ export class ShellCommandTaskTerminal implements vscode.Pseudoterminal {
         if (!code) {
           resolve(output);
         } else {
-          reject(new Error(`${this.command} terminated with status code ${code}`));
+          reject(code);
         }
       });
     });

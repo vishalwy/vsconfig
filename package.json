@@ -2,7 +2,11 @@
   "name": "vsconfig",
   "displayName": "VSConfig",
   "description": "Configure your .vscode folder",
-  "version": "0.0.3",
+  "version": "0.0.4",
+  "publisher": "vishalwy",
+  "author": {
+    "name": "Vishal P R"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/vishalwy/vsconfig.git"
@@ -73,8 +77,8 @@
   },
   "dependencies": {
     "deepmerge": "^4.2.2",
+    "jsonc-parser": "^3.2.0",
     "jsonschema": "^1.4.1",
-    "mustache": "^4.2.0",
-    "uuid": "^9.0.0"
+    "mustache": "^4.2.0"
   }
 }

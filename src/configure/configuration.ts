@@ -1,48 +1,86 @@
 import * as deepmerge from 'deepmerge';
 import * as fs from 'fs';
+import * as path from 'path';
 import * as vscode from 'vscode';
-import { Validator } from 'jsonschema';
 import { CancelError } from '../common/errors';
-import { getTemplates, getVSCodeDir, getLaunchFile, getTasksFile, ITemplate } from './template';
-import { Variables, IConfigVariables } from './variables';
-import { VariableSchema } from './variable-schema';
+import { Template, getLaunchFile, getTasksFile } from './template';
+import { Variables } from './variables';
 
 enum WriteStrategy {
   Merge,
   Replace
 }
 
+export interface IArrayItem {
+  [key: string]: any;
+}
+
 export class Configuration {
-  async execute(): Promise<void> {
-    const workspaceDir = await this.getWorkspaceDir();
-    const templateDirs = await this.getTemplateDirs();
-    const templates = await getTemplates(templateDirs);
+  constructor(private workspaceDir: string) {}
+
+  static async create(): Promise<void> {
+    try {
+      const workspaceDir = await this.getWorkspaceDir();
+      await new this(workspaceDir).execute();
+      vscode.window.showInformationMessage(`Configured ${workspaceDir}`);
+    } finally {
+      Variables.clear();
+    }
+  }
+
+  private async execute(): Promise<void> {
+    const templates = await Template.getTemplates(await this.getTemplateDirs());
 
     if (!templates.length) {
-      throw new Error('No templates found. Make sure you have launch.json in those folders');
+      throw new Error('No templates found. Make sure you have launch.json/tasks.json in those folders');
     }
 
-    const variables = await this.getVariables(templates);
-    const config = await this.interpolate(templates, variables);
+    const launchConfigs: object[] = [{ version: '0.2.0' }];
+    const tasksConfigs: object[] = [{ version: '2.0.0' }];
 
-    const vscodeDir = getVSCodeDir(workspaceDir);
-    const destTemplates = await getTemplates([vscodeDir]);
-
-    if (destTemplates.length && (await this.getWriteStrategy()) == WriteStrategy.Merge) {
-      const destConfig = await this.interpolate(destTemplates);
-      config.launchConfigs.push(...destConfig.launchConfigs);
-      config.tasksConfigs.push(...destConfig.tasksConfigs);
+    for (let template of templates) {
+      const { launch, tasks } = await template.parse();
+      launch && launchConfigs.push(launch);
+      tasks && tasksConfigs.push(tasks);
     }
 
-    await this.write(vscodeDir, deepmerge.all(config.launchConfigs), deepmerge.all(config.tasksConfigs));
-    vscode.window.showInformationMessage(`Configured ${workspaceDir}`);
+    const destTemplate = (await Template.getTemplates([this.getVSCodeDir()]))[0];
+
+    if (destTemplate && (await this.getWriteStrategy()) == WriteStrategy.Merge) {
+      const { launch, tasks } = await destTemplate.parse(false);
+      launch && launchConfigs.splice(1, 0, launch);
+      tasks && tasksConfigs.splice(1, 0, tasks);
+    }
+
+    const mergeOptions = { arrayMerge: Configuration.arrayMerge };
+    await this.write(deepmerge.all(launchConfigs, mergeOptions), deepmerge.all(tasksConfigs, mergeOptions));
+  }
+
+  private async getTemplateDirs(): Promise<string[]> {
+    const uris = await vscode.window.showOpenDialog({
+      title: 'Template folders',
+      openLabel: 'Select',
+      canSelectFiles: false,
+      canSelectFolders: true,
+      canSelectMany: true
+    });
+
+    if (!uris) {
+      throw new CancelError();
+    }
+
+    return uris.map((uri: vscode.Uri) => uri.fsPath);
+  }
+
+  private getVSCodeDir(): string {
+    return getVSCodeDir(this.workspaceDir);
   }
 
   private async getWriteStrategy(): Promise<WriteStrategy> {
     const selection = await vscode.window.showQuickPick(['Merge', 'Replace'], {
       canPickMany: false,
       ignoreFocusOut: true,
-      placeHolder: 'Target .vscode already has config files. How do you want to write?'
+      placeHolder: 'Target .vscode already contains config files. How do you want to write?'
     });
 
     if (!selection) {
@@ -52,7 +90,14 @@ export class Configuration {
     return selection == 'Merge' ? WriteStrategy.Merge : WriteStrategy.Replace;
   }
 
-  private async getWorkspaceDir(): Promise<string> {
+  private async write(launchConfig: object, tasksConfig: object): Promise<void> {
+    const vscodeDir = this.getVSCodeDir();
+    await fs.promises.mkdir(vscodeDir, { recursive: true });
+    await fs.promises.writeFile(getLaunchFile(vscodeDir), JSON.stringify(launchConfig, undefined, 4));
+    await fs.promises.writeFile(getTasksFile(vscodeDir), JSON.stringify(tasksConfig, undefined, 4));
+  }
+
+  private static async getWorkspaceDir(): Promise<string> {
     const dirs = vscode.workspace.workspaceFolders || [];
 
     if (!dirs.length) {
@@ -73,73 +118,33 @@ export class Configuration {
     return dir.uri.fsPath;
   }
 
-  private async getTemplateDirs(): Promise<string[]> {
-    const uris = await vscode.window.showOpenDialog({
-      title: 'Template folders',
-      openLabel: 'Select',
-      canSelectFiles: false,
-      canSelectFolders: true,
-      canSelectMany: true
-    });
+  private static arrayMerge(target: IArrayItem[], source: IArrayItem[]): IArrayItem[] {
+    if (source.length) {
+      target = [...target];
+      const keys = Object.keys(source[0]);
+      const key = ['name', 'label', 'id'].find((key: string) => keys.indexOf(key) != -1);
 
-    if (!uris) {
-      throw new CancelError();
-    }
+      if (key) {
+        for (let sourceItem of source) {
+          const index = target.findIndex((targetItem: IArrayItem) => {
+            return targetItem && targetItem[key] && targetItem[key] == sourceItem[key];
+          });
 
-    return uris.map((uri: vscode.Uri) => uri.fsPath);
-  }
-
-  private async getVariables(templates: ITemplate[]): Promise<Variables> {
-    const variables = new Variables();
-    const variablesConfigs = [];
-
-    for (let { variablesFile } of templates) {
-      if (!variablesFile) {
-        continue;
-      }
-
-      const variablesConfig = JSON.parse(await variablesFile.getData());
-      const validation = new Validator().validate(variablesConfig, VariableSchema);
-
-      if (validation.errors.length) {
-        throw new Error(`${variablesFile}: ${validation.errors[0].property} - ${validation.errors[0].message}`);
-      }
-
-      variablesConfigs.push(variablesConfig);
-    }
-
-    if (!variablesConfigs.length) {
-      return variables;
-    }
-
-    const variablesConfig = <IConfigVariables>deepmerge.all(variablesConfigs);
-    await variables.load(variablesConfig);
-    return variables;
-  }
-
-  private async interpolate(
-    templates: ITemplate[],
-    variables?: Variables
-  ): Promise<{ launchConfigs: object[]; tasksConfigs: object[] }> {
-    const launchConfigs = [];
-    const tasksConfigs = [];
-
-    for (let { launchFile, tasksFile } of templates) {
-      const data = await launchFile.getData();
-      launchConfigs.push(JSON.parse(variables?.eval(data) || data));
-
-      if (tasksFile) {
-        const data = await tasksFile.getData();
-        tasksConfigs.push(JSON.parse(variables?.eval(data) || data));
+          if (index >= 0) {
+            target[index] = sourceItem;
+          } else {
+            target.push(sourceItem);
+          }
+        }
+      } else {
+        target.push(...source);
       }
     }
 
-    return { launchConfigs, tasksConfigs };
+    return target;
   }
+}
 
-  private async write(vscodeDir: string, launchConfig: object, tasksConfig: object): Promise<void> {
-    await fs.promises.mkdir(vscodeDir, { recursive: true });
-    await fs.promises.writeFile(getLaunchFile(vscodeDir), JSON.stringify(launchConfig, undefined, 4));
-    await fs.promises.writeFile(getTasksFile(vscodeDir), JSON.stringify(tasksConfig, undefined, 4));
-  }
+export function getVSCodeDir(directory: string): string {
+  return path.join(directory, '.vscode');
 }

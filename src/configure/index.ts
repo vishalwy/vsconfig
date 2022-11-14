@@ -4,7 +4,7 @@ import { Configuration } from './configuration';
 
 export async function run(): Promise<void> {
   try {
-    await new Configuration().execute();
+    await Configuration.create();
   } catch (error: any) {
     if (!(error instanceof CancelError)) {
       vscode.window.showErrorMessage(`Error configuring .vscode; ${error.message}`);

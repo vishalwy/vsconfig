@@ -50,7 +50,7 @@ export class Tasker {
       return items.length ? items[0] : output;
     }
 
-    const selectedItem = await vscode.window.showQuickPick(items);
+    const selectedItem = await vscode.window.showQuickPick(items, { ignoreFocusOut: true });
 
     if (selectedItem) {
       return selectedItem;

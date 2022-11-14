@@ -18,8 +18,8 @@ export class ShellCommandTaskProvider implements vscode.TaskProvider {
     return ShellCommandTaskProvider.resolve(task);
   }
 
-  static resolve(task: vscode.Task, deferredOutput?: Deferred<string>): vscode.Task {
-    const definition = <IShellCommandTaskDefinition>task.definition;
+  static resolve(sourceTask: vscode.Task, deferredOutput?: Deferred<string>): vscode.Task {
+    const definition = <IShellCommandTaskDefinition>sourceTask.definition;
 
     const execution = new vscode.CustomExecution(
       async (taskDefinition: vscode.TaskDefinition): Promise<vscode.Pseudoterminal> => {
@@ -30,15 +30,27 @@ export class ShellCommandTaskProvider implements vscode.TaskProvider {
           definition.timeout,
           deferredOutput ? (data: string) => (output = data) : undefined
         );
+
         terminal.onDidClose((code) => {
           if (deferredOutput) {
-            code ? deferredOutput.reject(code) : deferredOutput.resolve(output);
+            if (code) {
+              deferredOutput.reject(new Error(`Command terminated with status code ${code}`));
+            } else {
+              deferredOutput.resolve(output);
+            }
           }
         });
+
         return terminal;
       }
     );
 
-    return new vscode.Task(definition, task.scope || vscode.TaskScope.Workspace, task.name, task.source, execution);
+    return new vscode.Task(
+      definition,
+      sourceTask.scope || vscode.TaskScope.Workspace,
+      sourceTask.name,
+      sourceTask.source,
+      execution
+    );
   }
 }
