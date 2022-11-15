@@ -5,8 +5,8 @@ import { CancelError } from '../common/errors';
 import { Validator } from 'jsonschema';
 import { VariableSchema } from './variable-schema';
 
-const HASH_REGEX = /{{\s*(HASH\([^\)]+\))\s*}}/g;
-const NUMBER_REGEX = /"{{\s*NUMBER\(([^\)]+)\)\s*}}"/g;
+const HASHID_REGEX = /{{\s*(HASHID\([^\)]+\))\s*}}/g;
+const NONSTRING_REGEX = /"{{\s*NONSTRING\(([^\)]+)\)\s*}}"/g;
 
 export interface IConfigVariableDetails {
   description?: string;
@@ -19,8 +19,8 @@ export interface IConfigVariables {
 }
 
 export class Variables {
+  private static scope: string = '';
   private static values: { [variableName: string]: string } = {};
-  private static hashes: { [variableName: string]: string } = {};
 
   constructor(private config: IConfigVariables = {}) {
     const validation = new Validator().validate(config, VariableSchema);
@@ -31,14 +31,14 @@ export class Variables {
   }
 
   async eval(input: string): Promise<string> {
-    input = this.replaceHashes(input);
+    input = this.replaceHashIds(input);
     input = this.replaceNumbers(input);
     return await this.replaceVariables(input);
   }
 
-  static clear(): void {
+  static reset(scope: string): void {
+    this.scope = scope;
     this.values = {};
-    this.hashes = {};
   }
 
   private async replaceVariables(input: string): Promise<string> {
@@ -58,21 +58,15 @@ export class Variables {
     });
   }
 
-  private replaceHashes(input: string): string {
-    return input.replace(HASH_REGEX, (_, p1: string) => {
-      let id = Variables.hashes[p1];
-
-      if (!id) {
-        id = crypto.createHash('sha256').update(input).digest('hex').slice(0, 16);
-        Variables.hashes[p1] = id;
-      }
-
-      return id;
+  private replaceHashIds(input: string): string {
+    return input.replace(HASHID_REGEX, (_, p1: string) => {
+      const data = `${Variables.scope}:${p1}`;
+      return crypto.createHash('sha256').update(data).digest('hex').slice(0, 16);
     });
   }
 
   private replaceNumbers(input: string): string {
-    return input.replace(NUMBER_REGEX, (_, p1: string) => {
+    return input.replace(NONSTRING_REGEX, (_, p1: string) => {
       return `{{${p1}}}`;
     });
   }

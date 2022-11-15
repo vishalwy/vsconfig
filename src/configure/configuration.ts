@@ -19,13 +19,10 @@ export class Configuration {
   constructor(private workspaceDir: string) {}
 
   static async create(): Promise<void> {
-    try {
-      const workspaceDir = await this.getWorkspaceDir();
-      await new this(workspaceDir).execute();
-      vscode.window.showInformationMessage(`Configured ${workspaceDir}`);
-    } finally {
-      Variables.clear();
-    }
+    const workspaceDir = await this.getWorkspaceDir();
+    Variables.reset(workspaceDir);
+    await new this(workspaceDir).execute();
+    vscode.window.showInformationMessage(`Configured ${workspaceDir}`);
   }
 
   private async execute(): Promise<void> {
