@@ -56,8 +56,8 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "node ./out/test/runTest.js",
-    "format": "prettier --print-width 120 --trailing-comma none --single-quote --write .",
-    "package": "vsce package"
+    "format": "prettier --check . '!out/**' >/dev/null 2>&1 ; code=$? ; prettier -l --write . '!out/**' ; exit ${code}",
+    "build": "vsce package"
   },
   "devDependencies": {
     "@types/glob": "^8.0.0",
@@ -72,6 +72,7 @@
     "eslint": "^8.24.0",
     "glob": "^8.0.3",
     "mocha": "^10.0.0",
+    "pre-commit": "^1.2.2",
     "prettier": "^2.7.1",
     "typescript": "^4.8.4",
     "vsce": "^2.14.0"
@@ -81,5 +82,15 @@
     "jsonc-parser": "^3.2.0",
     "jsonschema": "^1.4.1",
     "mustache": "^4.2.0"
+  },
+  "prettier": {
+    "trailingComma": "none",
+    "printWidth": 120,
+    "singleQuote": true
+  },
+  "pre-commit": {
+    "run": [
+      "format"
+    ]
   }
 }
