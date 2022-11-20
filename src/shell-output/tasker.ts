@@ -3,13 +3,13 @@ import { Deferred } from '../common/deferred';
 import { CancelError } from '../common/errors';
 import { ShellCommandTaskProvider } from '../shell-command';
 
+export interface ISplitOptions {
+  regex: RegExp;
+  prompt?: string;
+}
+
 export class Tasker {
-  private splitRegex?: RegExp;
-  constructor(private taskName: string, splitRegex?: string) {
-    if (splitRegex) {
-      this.splitRegex = new RegExp(splitRegex);
-    }
-  }
+  constructor(private taskName: string, private splitOptions?: ISplitOptions) {}
 
   async execute(): Promise<string> {
     const deferredOutput = new Deferred<string>();
@@ -40,17 +40,20 @@ export class Tasker {
   }
 
   async pick(output: string): Promise<string> {
-    if (!this.splitRegex) {
+    if (!this.splitOptions) {
       return output;
     }
 
-    const items = output.split(this.splitRegex).filter((item) => item);
+    const items = output.split(this.splitOptions.regex).filter((item) => item);
 
     if (items.length <= 1) {
       return items.length ? items[0] : output;
     }
 
-    const selectedItem = await vscode.window.showQuickPick(items, { ignoreFocusOut: true });
+    const selectedItem = await vscode.window.showQuickPick(items, {
+      ignoreFocusOut: true,
+      placeHolder: this.splitOptions.prompt
+    });
 
     if (selectedItem) {
       return selectedItem;

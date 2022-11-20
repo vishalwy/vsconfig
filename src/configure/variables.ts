@@ -5,7 +5,7 @@ import { CancelError } from '../common/errors';
 import { Validator } from 'jsonschema';
 import { VariableSchema } from './variable-schema';
 
-const HASHID_REGEX = /{{\s*(HASHID\([^\)]+\))\s*}}/g;
+const SCOPED_REGEX = /{{\s*SCOPED\(([^\)]+)\)\s*}}/g;
 const NONSTRING_REGEX = /"{{\s*NONSTRING\(([^\)]+)\)\s*}}"/g;
 
 export interface IConfigVariableDetails {
@@ -36,8 +36,14 @@ export class Variables {
     return await this.replaceVariables(input);
   }
 
-  static reset(scope: string): void {
-    this.scope = scope;
+  static reset(scope: string = ''): void {
+    if (scope) {
+      scope = crypto.createHash('sha256').update(scope).digest('hex').slice(0, 10);
+      this.scope = `${scope}/`;
+    } else {
+      this.scope = '';
+    }
+
     this.values = {};
   }
 
@@ -59,10 +65,7 @@ export class Variables {
   }
 
   private replaceHashIds(input: string): string {
-    return input.replace(HASHID_REGEX, (_, p1: string) => {
-      const data = `${Variables.scope}:${p1}`;
-      return crypto.createHash('sha256').update(data).digest('hex').slice(0, 16);
-    });
+    return input.replace(SCOPED_REGEX, (_, p1: string) => `${Variables.scope}${p1}`);
   }
 
   private replaceNumbers(input: string): string {

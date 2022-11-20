@@ -29,7 +29,7 @@ export class Configuration {
     const templates = await Template.getTemplates(await this.getTemplateDirs());
 
     if (!templates.length) {
-      throw new Error('No templates found. Make sure you have launch.json/tasks.json in those folders');
+      throw new Error('No templates found. Make sure you have launch.json or tasks.json in those folders');
     }
 
     const launchConfigs: object[] = [{ version: '0.2.0' }];
